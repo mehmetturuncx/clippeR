@@ -1,0 +1,131 @@
+body {
+    font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    background: rgba(20, 20, 20, 0.55);
+    backdrop-filter: blur(20px);
+    color: #e0e0e0;
+    margin: 0;
+    padding: 0;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    border-radius: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+}
+
+header {
+    padding: 14px 16px;
+    background: rgba(0, 0, 0, 0.3);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+h1 {
+    font-size: 14px;
+    font-weight: 600;
+    margin: 0;
+    color: #fff;
+    letter-spacing: 0.5px;
+}
+
+#history-list {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 8px;
+    overflow-y: auto;
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+    width: 6px;
+}
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.3);
+}
+
+.item-row {
+    display: flex;
+    gap: 6px;
+    align-items: flex-start;
+    position: relative;
+}
+
+.item-content-wrapper {
+    flex: 1;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+}
+
+.item-button {
+    width: 100%;
+    text-align: left;
+    background: rgba(255, 255, 255, 0.05);
+    color: #ddd;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    padding: 10px 12px;
+    font-size: 13px;
+    cursor: pointer;
+    word-break: break-word;
+    white-space: pre-wrap;
+    transition: all 0.2s ease;
+    line-height: 1.4;
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+.item-button.expanded {
+    -webkit-line-clamp: unset;
+}
+
+.item-button:hover {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(255, 255, 255, 0.1);
+    color: #fff;
+}
+
+.expand-btn {
+    align-self: flex-end;
+    background: transparent;
+    color: #00bcd4;
+    border: none;
+    font-size: 11px;
+    cursor: pointer;
+    margin-top: -6px;
+    padding: 4px 8px;
+    z-index: 10;
+}
+.expand-btn:hover {
+    text-decoration: underline;
+}
+
+.delete-button {
+    background: transparent;
+    color: rgba(255, 100, 100, 0.6);
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    padding: 8px 10px;
+    font-size: 14px;
+    transition: all 0.2s ease;
+}
+
+.delete-button:hover {
+    background: rgba(255, 100, 100, 0.15);
+    color: #ff4444;
+}
