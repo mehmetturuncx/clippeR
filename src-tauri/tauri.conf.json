@@ -14,10 +14,11 @@
         "width": 350,
         "height": 500,
         "decorations": false,
-        "transparent": true,
+        "transparent": false,
         "visible": false,
         "skipTaskbar": true,
-        "alwaysOnTop": true
+        "alwaysOnTop": true,
+        "shadow": false
       }
     ],
     "security": {

@@ -2,13 +2,18 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8" />
-    <title>Clipboard Manager</title>
+    <title>clippeR</title>
     <link rel="icon" type="image/x-icon" href="/favicon.ico" />
     <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
     <header>
         <h1>clippeR</h1>
+        <div class="header-actions">
+            <button class="header-btn" id="clear-all-btn" title="Clear All">
+                <svg viewBox="0 0 24 24"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
+            </button>
+        </div>
     </header>
     <div id="history-list"></div>
     <script type="module" src="/main.js"></script>

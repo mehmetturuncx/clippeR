@@ -8,6 +8,23 @@ use tauri::tray::TrayIconBuilder;
 use tauri::{Manager, State};
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut};
 
+fn position_window_bottom_right(window: &tauri::WebviewWindow) {
+    if let Ok(Some(monitor)) = window.primary_monitor() {
+        let screen = monitor.size();
+        let scale = monitor.scale_factor();
+        let screen_w = screen.width as f64 / scale;
+        let screen_h = screen.height as f64 / scale;
+        let win_w = 350.0;
+        let win_h = 500.0;
+        let x = screen_w - win_w - 12.0;
+        let y = screen_h - win_h - 56.0;
+        let _ = window.set_position(tauri::PhysicalPosition::new(
+            (x * scale) as i32,
+            (y * scale) as i32,
+        ));
+    }
+}
+
 struct AppState {
     history: Mutex<Vec<(i64, String)>>,
     last_seen: Mutex<Option<String>>,
@@ -60,6 +77,7 @@ pub fn run() {
                         if window.is_visible().unwrap_or(false) {
                             let _ = window.hide();
                         } else {
+                            position_window_bottom_right(&window);
                             let _ = window.show();
                             let _ = window.set_focus();
                         }
@@ -131,10 +149,7 @@ pub fn run() {
                     {
                         let app = tray.app_handle();
                         if let Some(window) = app.get_webview_window("main") {
-                            use tauri_plugin_positioner::{WindowExt, Position};
-                            let _ = tauri_plugin_positioner::on_tray_event(app, &event);
-                            let _ = window.as_ref().window().move_window(Position::TrayCenter);
-                            
+                            position_window_bottom_right(&window);
                             if window.is_visible().unwrap_or(false) {
                                 let _ = window.hide();
                             } else {
