@@ -2,11 +2,12 @@ use clipboard_win::{get_clipboard_string, set_clipboard_string};
 use rusqlite::Connection;
 use std::sync::Mutex;
 use std::thread;
-use std::time::Duration;
+use std::io;
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::TrayIconBuilder;
-use tauri::{Manager, State};
+use tauri::{Manager, State, AppHandle};
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut};
+use clipboard_master::{ClipboardHandler,CallbackResult};
 
 fn position_window_bottom_right(window: &tauri::WebviewWindow) {
     if let Ok(Some(monitor)) = window.primary_monitor() {
@@ -29,6 +30,44 @@ struct AppState {
     history: Mutex<Vec<(i64, String)>>,
     last_seen: Mutex<Option<String>>,
     conn: Mutex<Connection>,
+}
+
+struct ClipboardListener {
+	app_handle: AppHandle,
+}
+
+impl ClipboardHandler for ClipboardListener {
+    fn on_clipboard_change(&mut self) -> CallbackResult {
+        println!("Clipboard change happened!");
+        if let Ok(text) = get_clipboard_string() {
+             let state = self.app_handle.state::<AppState>();
+             let mut last_seen = state.last_seen.lock().unwrap();
+             if *last_seen != Some(text.clone()) && !text.is_empty() {
+                 *last_seen = Some(text.clone());
+                 drop(last_seen);
+                 let mut h = state.history.lock().unwrap();
+                 let now = chrono::Local::now().to_string();
+                 let conn = state.conn.lock().unwrap();
+                 conn.execute(
+                     "INSERT INTO clipboard (content, created_at) VALUES (?1, ?2)",
+                     (&text, &now),
+                 )
+                 .unwrap();
+                 let new_id = conn.last_insert_rowid();
+                 drop(conn);
+                 h.push((new_id, text));
+                 if h.len() > 100 {
+                     h.remove(0);
+                 }
+             }
+                        }
+        CallbackResult::Next
+    }
+
+    fn on_clipboard_error(&mut self, error: io::Error) -> CallbackResult {
+        eprintln!("Error: {}", error);
+        CallbackResult::Next
+    }
 }
 
 #[tauri::command]
@@ -177,32 +216,12 @@ pub fn run() {
             });
 
             let app_handle = app.handle().clone();
-            thread::spawn(move || loop {
-                if let Ok(text) = get_clipboard_string() {
-                    let state = app_handle.state::<AppState>();
-                    let mut last_seen = state.last_seen.lock().unwrap();
-                    if *last_seen != Some(text.clone()) && !text.is_empty() {
-                        *last_seen = Some(text.clone());
-                        drop(last_seen);
-
-                        let mut h = state.history.lock().unwrap();
-                        let now = chrono::Local::now().to_string();
-                        let conn = state.conn.lock().unwrap();
-                        conn.execute(
-                            "INSERT INTO clipboard (content, created_at) VALUES (?1, ?2)",
-                            (&text, &now),
-                        )
-                        .unwrap();
-                        let new_id = conn.last_insert_rowid();
-                        drop(conn);
-                        h.push((new_id, text));
-                        if h.len() > 100 {
-                            h.remove(0);
-                        }
-                    }
-                }
-                thread::sleep(Duration::from_millis(500));
+            thread::spawn(move || {
+            	let listener = ClipboardListener {app_handle};
+             	let mut master = clipboard_master::Master::new(listener).unwrap();
+              	master.run().unwrap();
             });
+            
 
             Ok(())
         })
