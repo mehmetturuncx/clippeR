@@ -9,10 +9,18 @@
 <body>
     <header>
         <h1>clippeR</h1>
+        <input id="search-bar" type="text" placeholder="Search...">
         <div class="header-actions">
             <button class="header-btn" id="clear-all-btn" title="Clear All">
                 <svg viewBox="0 0 24 24"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
             </button>
+            <div id="clear-confirm-popup" class="hidden">
+                <div class="confirm-text">Clear all?</div>
+                <div class="confirm-actions">
+                    <button id="confirm-yes">Yes</button>
+                    <button id="confirm-no">No</button>
+                </div>
+            </div>
         </div>
     </header>
     <div id="history-list"></div>
