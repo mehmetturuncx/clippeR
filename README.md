@@ -28,7 +28,7 @@
 Built with Vanilla JS, Rust, and Tauri 2.0.
 
 ```bash
-git clone https://github.com/yourusername/clippeR.git
+git clone https://github.com/mehmetturuncx/clippeR.git
 cd clippeR
 npm install
 npm run tauri dev # Run locally
