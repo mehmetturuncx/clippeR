@@ -6,28 +6,35 @@ const ICON_EXPAND = `<svg viewBox="0 0 24 24"><path d="M7.41 8.59L12 13.17l4.59-
 const ICON_COLLAPSE = `<svg viewBox="0 0 24 24"><path d="M7.41 15.41L12 10.83l4.59 4.58L18 14l-6-6-6 6z"/></svg>`;
 
 let lastHistoryJSON = "";
+let lastSearchQuery = "";
 
 async function refreshHistory() {
   const history = await invoke("get_history");
   const historyJSON = JSON.stringify(history);
+  const searchQuery = document.getElementById("search-bar").value.toLowerCase();
 
-  if (historyJSON === lastHistoryJSON) {
+  if (historyJSON === lastHistoryJSON && searchQuery === lastSearchQuery) {
     return; // nothing changed, do not touch the screen
   }
   lastHistoryJSON = historyJSON;
+  lastSearchQuery = searchQuery;
 
   const container = document.querySelector("#history-list");
   container.innerHTML = "";
 
-  if (history.length === 0) {
+  const filteredHistory = history.filter(([id, content]) => 
+    content.toLowerCase().includes(searchQuery)
+  );
+
+  if (filteredHistory.length === 0) {
     const empty = document.createElement("div");
     empty.className = "empty-state";
-    empty.textContent = "Clipboard is empty";
+    empty.textContent = searchQuery ? "Sonuç bulunamadı" : "Clipboard is empty";
     container.appendChild(empty);
     return;
   }
 
-  for (const [id, content] of history) {
+  for (const [id, content] of filteredHistory) {
     const row = document.createElement("div");
     row.className = "item-row";
 
@@ -80,13 +87,40 @@ async function refreshHistory() {
 
 // Clear all history
 document.addEventListener("DOMContentLoaded", () => {
-  document.getElementById("clear-all-btn").addEventListener("click", async () => {
+  const clearBtn = document.getElementById("clear-all-btn");
+  const confirmPopup = document.getElementById("clear-confirm-popup");
+  const confirmYes = document.getElementById("confirm-yes");
+  const confirmNo = document.getElementById("confirm-no");
+
+  clearBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    confirmPopup.classList.remove("hidden");
+  });
+
+  confirmNo.addEventListener("click", () => {
+    confirmPopup.classList.add("hidden");
+  });
+
+  document.addEventListener("click", (e) => {
+    if (!confirmPopup.contains(e.target) && !clearBtn.contains(e.target)) {
+      confirmPopup.classList.add("hidden");
+    }
+  });
+
+  confirmYes.addEventListener("click", async () => {
+    confirmPopup.classList.add("hidden");
     const history = await invoke("get_history");
     for (const [id] of history) {
       await invoke("delete_item", { id });
     }
+    lastHistoryJSON = ""; // Force re-render
     await refreshHistory();
   });
+
+  document.getElementById("search-bar").addEventListener("input", () => {
+    refreshHistory();
+  });
+
 
   refreshHistory();
   setInterval(refreshHistory, 500);
