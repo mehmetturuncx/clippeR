@@ -1,4 +1,5 @@
 const { invoke } = window.__TAURI__.core;
+const { listen } = window.__TAURI__.event;
 
 // SVG icon templates
 const ICON_DELETE = `<svg viewBox="0 0 24 24"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>`;
@@ -6,24 +7,23 @@ const ICON_EXPAND = `<svg viewBox="0 0 24 24"><path d="M7.41 8.59L12 13.17l4.59-
 const ICON_COLLAPSE = `<svg viewBox="0 0 24 24"><path d="M7.41 15.41L12 10.83l4.59 4.58L18 14l-6-6-6 6z"/></svg>`;
 
 let lastHistoryJSON = "";
-let lastSearchQuery = "";
 
 async function refreshHistory() {
   const history = await invoke("get_history");
   const historyJSON = JSON.stringify(history);
   const searchQuery = document.getElementById("search-bar").value.toLowerCase();
 
-  if (historyJSON === lastHistoryJSON && searchQuery === lastSearchQuery) {
+  if (historyJSON === lastHistoryJSON && searchQuery === (refreshHistory._lastQuery || "")) {
     return;
   }
   lastHistoryJSON = historyJSON;
-  lastSearchQuery = searchQuery;
+  refreshHistory._lastQuery = searchQuery;
 
   const container = document.querySelector("#history-list");
   container.innerHTML = "";
 
-  const filteredHistory = history.filter(([id, content]) =>
-    content.toLowerCase().includes(searchQuery)
+  const filteredHistory = history.filter(([id, content, item_type]) =>
+    item_type === "image" || content.toLowerCase().includes(searchQuery)
   );
 
   if (filteredHistory.length === 0) {
@@ -85,6 +85,7 @@ async function refreshHistory() {
     deleteBtn.title = "Delete";
     deleteBtn.addEventListener("click", async () => {
       await invoke("delete_item", { id });
+      lastHistoryJSON = "";
       await refreshHistory();
     });
 
@@ -94,7 +95,12 @@ async function refreshHistory() {
   }
 }
 
-// Clear all history
+// Listen for clipboard changes from backend (replaces setInterval polling)
+listen("clipboard-changed", () => {
+  lastHistoryJSON = "";
+  refreshHistory();
+});
+
 document.addEventListener("DOMContentLoaded", () => {
   const clearBtn = document.getElementById("clear-all-btn");
   const confirmPopup = document.getElementById("clear-confirm-popup");
@@ -118,18 +124,15 @@ document.addEventListener("DOMContentLoaded", () => {
 
   confirmYes.addEventListener("click", async () => {
     confirmPopup.classList.add("hidden");
-    const history = await invoke("get_history");
-    for (const [id] of history) {
-      await invoke("delete_item", { id });
-    }
+    await invoke("clear_all");
     lastHistoryJSON = "";
     await refreshHistory();
   });
 
   document.getElementById("search-bar").addEventListener("input", () => {
+    refreshHistory._lastQuery = null;
     refreshHistory();
   });
 
   refreshHistory();
-  setInterval(refreshHistory, 500);
 });

@@ -1,3 +1,5 @@
+use arboard::Clipboard;
+use clipboard_master::{CallbackResult, ClipboardHandler};
 use image::RgbaImage;
 use rusqlite::Connection;
 use std::io;
@@ -5,10 +7,8 @@ use std::sync::Mutex;
 use std::thread;
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::TrayIconBuilder;
-use tauri::{AppHandle, Manager, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut};
-use clipboard_master::{CallbackResult, ClipboardHandler};
-use arboard::Clipboard;
 
 fn position_window_bottom_right(window: &tauri::WebviewWindow) {
     if let Ok(Some(monitor)) = window.primary_monitor() {
@@ -28,7 +28,6 @@ fn position_window_bottom_right(window: &tauri::WebviewWindow) {
 }
 
 struct AppState {
-    history: Mutex<Vec<(i64, String, String)>>,
     last_seen: Mutex<Option<String>>,
     conn: Mutex<Connection>,
 }
@@ -39,72 +38,76 @@ struct ClipboardListener {
 
 impl ClipboardHandler for ClipboardListener {
     fn on_clipboard_change(&mut self) -> CallbackResult {
-        if let Ok(mut clipboard) = Clipboard::new() {
-            if let Ok(image_data) = clipboard.get_image() {
-                let image_id = format!("image_{}", image_data.bytes.len());
-                let state = self.app_handle.state::<AppState>();
-                let mut last_seen = state.last_seen.lock().unwrap();
+        let Ok(mut clipboard) = Clipboard::new() else {
+            return CallbackResult::Next;
+        };
 
-                if *last_seen != Some(image_id.clone()) {
-                    *last_seen = Some(image_id);
-                    drop(last_seen);
+        let state = self.app_handle.state::<AppState>();
 
-                    let img = RgbaImage::from_raw(
-                        image_data.width as u32,
-                        image_data.height as u32,
-                        image_data.bytes.into_owned(),
-                    )
-                    .expect("Failed to convert raw image data");
+        if let Ok(image_data) = clipboard.get_image() {
+            let image_id = format!("image_{}", image_data.bytes.len());
 
-                    let now_str = chrono::Local::now().format("%Y%m%d_%H%M%S").to_string();
-                    let file_name = format!("clip_{}.png", now_str);
-                    let app_data_dir = self.app_handle.path().app_data_dir().unwrap();
-                    let file_path = app_data_dir.join("images").join(&file_name);
-                    img.save(&file_path).unwrap();
-
-                    let mut h = state.history.lock().unwrap();
-                    let now = chrono::Local::now().to_string();
-                    let conn = state.conn.lock().unwrap();
-                    let file_path_str = file_path.to_string_lossy().to_string();
-                    conn.execute(
-                        "INSERT INTO clipboard (content, created_at, item_type) VALUES (?1, ?2, 'image')",
-                        (&file_path_str, &now),
-                    )
-                    .unwrap();
-                    let new_id = conn.last_insert_rowid();
-                    drop(conn);
-
-                    h.push((new_id, file_path_str, "image".to_string()));
-                    if h.len() > 100 {
-                        h.remove(0);
-                    }
-                }
-            } else if let Ok(text) = clipboard.get_text() {
-                let state = self.app_handle.state::<AppState>();
-                let mut last_seen = state.last_seen.lock().unwrap();
-
-                if *last_seen != Some(text.clone()) && !text.is_empty() {
-                    *last_seen = Some(text.clone());
-                    drop(last_seen);
-
-                    let mut h = state.history.lock().unwrap();
-                    let now = chrono::Local::now().to_string();
-                    let conn = state.conn.lock().unwrap();
-                    conn.execute(
-                        "INSERT INTO clipboard (content, created_at, item_type) VALUES (?1, ?2, 'text')",
-                        (&text, &now),
-                    )
-                    .unwrap();
-                    let new_id = conn.last_insert_rowid();
-                    drop(conn);
-
-                    h.push((new_id, text, "text".to_string()));
-                    if h.len() > 100 {
-                        h.remove(0);
-                    }
-                }
+            let Ok(mut last_seen) = state.last_seen.lock() else {
+                return CallbackResult::Next;
+            };
+            if *last_seen == Some(image_id.clone()) {
+                return CallbackResult::Next;
             }
+            *last_seen = Some(image_id);
+            drop(last_seen);
+
+            let Some(img) = RgbaImage::from_raw(
+                image_data.width as u32,
+                image_data.height as u32,
+                image_data.bytes.into_owned(),
+            ) else {
+                return CallbackResult::Next;
+            };
+
+            let Ok(app_data_dir) = self.app_handle.path().app_data_dir() else {
+                return CallbackResult::Next;
+            };
+            let now_str = chrono::Local::now().format("%Y%m%d_%H%M%S_%3f").to_string();
+            let file_name = format!("clip_{}.png", now_str);
+            let file_path = app_data_dir.join("images").join(&file_name);
+
+            if img.save(&file_path).is_err() {
+                return CallbackResult::Next;
+            }
+
+            let file_path_str = file_path.to_string_lossy().to_string();
+            let now = chrono::Local::now().to_string();
+            if let Ok(conn) = state.conn.lock() {
+                let _ = conn.execute(
+                    "INSERT INTO clipboard (content, created_at, item_type) VALUES (?1, ?2, 'image')",
+                    (&file_path_str, &now),
+                );
+            }
+            let _ = self.app_handle.emit("clipboard-changed", ());
+        } else if let Ok(text) = clipboard.get_text() {
+            if text.is_empty() {
+                return CallbackResult::Next;
+            }
+
+            let Ok(mut last_seen) = state.last_seen.lock() else {
+                return CallbackResult::Next;
+            };
+            if *last_seen == Some(text.clone()) {
+                return CallbackResult::Next;
+            }
+            *last_seen = Some(text.clone());
+            drop(last_seen);
+
+            let now = chrono::Local::now().to_string();
+            if let Ok(conn) = state.conn.lock() {
+                let _ = conn.execute(
+                    "INSERT INTO clipboard (content, created_at, item_type) VALUES (?1, ?2, 'text')",
+                    (&text, &now),
+                );
+            }
+            let _ = self.app_handle.emit("clipboard-changed", ());
         }
+
         CallbackResult::Next
     }
 
@@ -114,41 +117,87 @@ impl ClipboardHandler for ClipboardListener {
     }
 }
 
+// ── Tauri Commands ──
+
 #[tauri::command]
-fn get_history(state: State<AppState>) -> Vec<(i64, String, String)> {
-    let h = state.history.lock().unwrap();
-    let mut result: Vec<(i64, String, String)> = h.clone();
-    result.reverse();
-    result
+fn get_history(state: State<AppState>) -> Result<Vec<(i64, String, String)>, String> {
+    let conn = state.conn.lock().map_err(|e| e.to_string())?;
+    let mut stmt = conn
+        .prepare("SELECT id, content, item_type FROM clipboard ORDER BY id DESC LIMIT 100")
+        .map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map([], |row| {
+            Ok((
+                row.get::<_, i64>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+            ))
+        })
+        .map_err(|e| e.to_string())?;
+
+    let mut result = Vec::new();
+    for row in rows {
+        result.push(row.map_err(|e| e.to_string())?);
+    }
+    Ok(result)
 }
 
 #[tauri::command]
 fn copy_item(content: String, state: State<AppState>) -> Result<(), String> {
     let mut clipboard = arboard::Clipboard::new().map_err(|e| e.to_string())?;
-    match clipboard.set_text(content.clone()) {
-        Ok(_) => {
-            let mut l = state.last_seen.lock().unwrap();
-            *l = Some(content);
-            Ok(())
-        }
-        Err(e) => Err(format!("Copy failed: {}", e)),
+    clipboard
+        .set_text(content.clone())
+        .map_err(|e| format!("Copy failed: {}", e))?;
+    if let Ok(mut l) = state.last_seen.lock() {
+        *l = Some(content);
     }
+    Ok(())
 }
 
 #[tauri::command]
 fn delete_item(id: i64, state: State<AppState>) -> Result<(), String> {
-    let mut h = state.history.lock().unwrap();
-    if let Some(pos) = h.iter().position(|(item_id, _, _)| *item_id == id) {
-        h.remove(pos);
+    let conn = state.conn.lock().map_err(|e| e.to_string())?;
+
+    // Clean up image file if this entry is an image
+    if let Ok(path) = conn.query_row(
+        "SELECT content FROM clipboard WHERE id = ?1 AND item_type = 'image'",
+        [id],
+        |row| row.get::<_, String>(0),
+    ) {
+        let _ = std::fs::remove_file(&path);
     }
-    state
-        .conn
-        .lock()
-        .unwrap()
-        .execute("DELETE FROM clipboard WHERE id = ?1", [id])
+
+    conn.execute("DELETE FROM clipboard WHERE id = ?1", [id])
         .map_err(|e| e.to_string())?;
     Ok(())
 }
+
+#[tauri::command]
+fn clear_all(state: State<AppState>, app_handle: AppHandle) -> Result<(), String> {
+    // Reset duplicate detection
+    if let Ok(mut last_seen) = state.last_seen.lock() {
+        *last_seen = None;
+    }
+
+    let conn = state.conn.lock().map_err(|e| e.to_string())?;
+    conn.execute("DELETE FROM clipboard", [])
+        .map_err(|e| e.to_string())?;
+    drop(conn);
+
+    // Clean up all saved image files
+    if let Ok(app_data_dir) = app_handle.path().app_data_dir() {
+        let images_dir = app_data_dir.join("images");
+        if let Ok(entries) = std::fs::read_dir(&images_dir) {
+            for entry in entries.flatten() {
+                let _ = std::fs::remove_file(entry.path());
+            }
+        }
+    }
+
+    Ok(())
+}
+
+// ── App Entry Point ──
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -177,13 +226,12 @@ pub fn run() {
             let shortcut = Shortcut::new(Some(Modifiers::ALT), Code::KeyV);
             app.global_shortcut().register(shortcut)?;
 
-            let app_data_dir = app.path().app_data_dir().unwrap();
-            std::fs::create_dir_all(&app_data_dir).unwrap();
-            let images_dir = app_data_dir.join("images");
-            std::fs::create_dir_all(&images_dir).unwrap();
+            let app_data_dir = app.path().app_data_dir()?;
+            std::fs::create_dir_all(&app_data_dir)?;
+            std::fs::create_dir_all(app_data_dir.join("images"))?;
 
             let db_path = app_data_dir.join("history.db");
-            let conn = Connection::open(db_path).unwrap();
+            let conn = Connection::open(db_path)?;
             conn.execute(
                 "CREATE TABLE IF NOT EXISTS clipboard (
                     id INTEGER PRIMARY KEY,
@@ -191,8 +239,7 @@ pub fn run() {
                     created_at TEXT NOT NULL
                 )",
                 (),
-            )
-            .unwrap();
+            )?;
 
             // Add item_type column for existing databases (silently ignores if already present)
             let _ = conn.execute(
@@ -200,28 +247,7 @@ pub fn run() {
                 (),
             );
 
-            let mut temp_vec: Vec<(i64, String, String)> = Vec::new();
-            {
-                let mut stmt = conn
-                    .prepare("SELECT id, content, item_type FROM clipboard ORDER BY id DESC LIMIT 100")
-                    .unwrap();
-                let rows = stmt
-                    .query_map([], |row| {
-                        Ok((
-                            row.get::<_, i64>(0)?,
-                            row.get::<_, String>(1)?,
-                            row.get::<_, String>(2)?,
-                        ))
-                    })
-                    .unwrap();
-                for row in rows {
-                    temp_vec.push(row.unwrap());
-                }
-            }
-            temp_vec.reverse();
-
             app.manage(AppState {
-                history: Mutex::new(temp_vec),
                 last_seen: Mutex::new(None),
                 conn: Mutex::new(conn),
             });
@@ -259,7 +285,7 @@ pub fn run() {
                 })
                 .build(app)?;
 
-            let window = app.get_webview_window("main").unwrap();
+            let window = app.get_webview_window("main").expect("main window must exist");
             let window_clone = window.clone();
             window.on_window_event(move |event| match event {
                 tauri::WindowEvent::CloseRequested { api, .. } => {
@@ -281,7 +307,12 @@ pub fn run() {
 
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![get_history, copy_item, delete_item])
+        .invoke_handler(tauri::generate_handler![
+            get_history,
+            copy_item,
+            delete_item,
+            clear_all
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
