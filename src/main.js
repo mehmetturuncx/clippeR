@@ -14,7 +14,7 @@ async function refreshHistory() {
   const searchQuery = document.getElementById("search-bar").value.toLowerCase();
 
   if (historyJSON === lastHistoryJSON && searchQuery === lastSearchQuery) {
-    return; // nothing changed, do not touch the screen
+    return;
   }
   lastHistoryJSON = historyJSON;
   lastSearchQuery = searchQuery;
@@ -22,19 +22,19 @@ async function refreshHistory() {
   const container = document.querySelector("#history-list");
   container.innerHTML = "";
 
-  const filteredHistory = history.filter(([id, content]) => 
+  const filteredHistory = history.filter(([id, content]) =>
     content.toLowerCase().includes(searchQuery)
   );
 
   if (filteredHistory.length === 0) {
     const empty = document.createElement("div");
     empty.className = "empty-state";
-    empty.textContent = searchQuery ? "Sonuç bulunamadı" : "Clipboard is empty";
+    empty.textContent = searchQuery ? "No results found" : "Clipboard is empty";
     container.appendChild(empty);
     return;
   }
 
-  for (const [id, content] of filteredHistory) {
+  for (const [id, content, item_type] of filteredHistory) {
     const row = document.createElement("div");
     row.className = "item-row";
 
@@ -43,15 +43,24 @@ async function refreshHistory() {
 
     const button = document.createElement("button");
     button.className = "item-button";
-    button.textContent = content;
-    button.addEventListener("click", async () => {
-      await invoke("copy_item", { content });
-    });
+
+    if (item_type === "image") {
+      const secureLink = window.__TAURI__.core.convertFileSrc(content);
+      const img = document.createElement("img");
+      img.className = "img-style";
+      img.src = secureLink;
+      button.appendChild(img);
+    } else {
+      button.textContent = content;
+      button.addEventListener("click", async () => {
+        await invoke("copy_item", { content });
+      });
+    }
 
     wrapper.appendChild(button);
 
-    // If text is long, add expand/collapse button
-    if (content.length > 120 || (content.match(/\n/g) || []).length >= 2) {
+    // Expand/collapse for long text entries
+    if (item_type === "text" && (content.length > 120 || (content.match(/\n/g) || []).length >= 2)) {
       const expandBtn = document.createElement("button");
       expandBtn.className = "expand-btn";
       expandBtn.innerHTML = ICON_EXPAND;
@@ -113,14 +122,13 @@ document.addEventListener("DOMContentLoaded", () => {
     for (const [id] of history) {
       await invoke("delete_item", { id });
     }
-    lastHistoryJSON = ""; // Force re-render
+    lastHistoryJSON = "";
     await refreshHistory();
   });
 
   document.getElementById("search-bar").addEventListener("input", () => {
     refreshHistory();
   });
-
 
   refreshHistory();
   setInterval(refreshHistory, 500);

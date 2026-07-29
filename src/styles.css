@@ -74,7 +74,7 @@ header .header-btn svg {
     padding: 0;
 }
 
-/* Scrollbar — KDE Breeze style */
+/* ── Scrollbar ── */
 ::-webkit-scrollbar {
     width: 8px;
 }
@@ -137,6 +137,15 @@ header .header-btn svg {
 .item-button:hover {
     background: #2980b9;
     color: #fff;
+}
+
+/* ── Image Preview ── */
+.img-style {
+    max-width: 100%;
+    max-height: 200px;
+    object-fit: contain;
+    border-radius: 4px;
+    display: block;
 }
 
 /* ── Expand / Collapse Button ── */
@@ -209,6 +218,7 @@ header .header-btn svg {
     user-select: none;
 }
 
+/* ── Search Bar ── */
 #search-bar {
     position: absolute;
     left: 50%;
@@ -217,7 +227,6 @@ header .header-btn svg {
     border: 1px solid #3d4349;
     color: #eff0f1;
     padding: 4px 8px;
-    
     font-size: 12px;
     outline: none;
     width: 150px;
@@ -241,7 +250,7 @@ header .header-btn svg {
     flex-direction: column;
     gap: 8px;
     z-index: 100;
-    box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
 }
 
 #clear-confirm-popup::before {

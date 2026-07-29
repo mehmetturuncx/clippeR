@@ -11,6 +11,7 @@
 ## ✨ Features
 
 - 🚀 **Blazing Fast**: Event-driven architecture ensures ~0% background CPU usage.
+- 🖼️ **Image Support**: Automatically captures and displays copied images.
 - 🔍 **Instant Search**: Quickly filter and find your past clipboard entries.
 - 💾 **Persistent**: History is safely stored locally (SQLite) and survives PC restarts.
 - ⚡ **Global Shortcut**: Access your clipboard instantly from anywhere with `Alt + V`.
@@ -31,7 +32,7 @@ Built with Vanilla JS, Rust, and Tauri 2.0.
 git clone https://github.com/mehmetturuncx/clippeR.git
 cd clippeR
 npm install
-npm run tauri dev # Run locally
+npm run tauri dev   # Run locally
 npm run tauri build # Build executable
 ```
 
