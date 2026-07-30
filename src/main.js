@@ -65,18 +65,6 @@ async function refreshHistory() {
     actionsBar.className = "item-actions";
 
     // Pin button
-    const pinBtn = document.createElement("button");
-    pinBtn.className = `pin-btn${pinned ? " active" : ""}`;
-    pinBtn.innerHTML = ICON_PIN;
-    pinBtn.title = pinned ? "Unpin" : "Pin";
-    pinBtn.addEventListener("click", async (e) => {
-      e.stopPropagation();
-      await invoke("toggle_pin", { id });
-      lastHistoryJSON = "";
-      await refreshHistory();
-    });
-    actionsBar.appendChild(pinBtn);
-
     // Expand/collapse for long text entries
     if (item_type === "text" && (content.length > 120 || (content.match(/\n/g) || []).length >= 2)) {
       const expandBtn = document.createElement("button");
@@ -96,6 +84,19 @@ async function refreshHistory() {
       });
       actionsBar.appendChild(expandBtn);
     }
+
+    // Pin button
+    const pinBtn = document.createElement("button");
+    pinBtn.className = `pin-btn${pinned ? " active" : ""}`;
+    pinBtn.innerHTML = ICON_PIN;
+    pinBtn.title = pinned ? "Unpin" : "Pin";
+    pinBtn.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      await invoke("toggle_pin", { id });
+      lastHistoryJSON = "";
+      await refreshHistory();
+    });
+    actionsBar.appendChild(pinBtn);
 
     wrapper.appendChild(actionsBar);
 
