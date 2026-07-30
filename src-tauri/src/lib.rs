@@ -9,6 +9,10 @@ use tauri::menu::{Menu, MenuItem};
 use tauri::tray::TrayIconBuilder;
 use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut};
+use windows::core::w;
+use windows::Win32::System::DataExchange::{
+    IsClipboardFormatAvailable, RegisterClipboardFormatW,
+};
 
 fn position_window_bottom_right(window: &tauri::WebviewWindow) {
     if let Ok(Some(monitor)) = window.primary_monitor() {
@@ -34,10 +38,20 @@ struct AppState {
 
 struct ClipboardListener {
     app_handle: AppHandle,
+    sensitive_format_id: u32,
 }
 
 impl ClipboardHandler for ClipboardListener {
     fn on_clipboard_change(&mut self) -> CallbackResult {
+        // Skip sensitive content (e.g., passwords from password managers)
+        if self.sensitive_format_id != 0 {
+            let is_sensitive =
+                unsafe { IsClipboardFormatAvailable(self.sensitive_format_id).is_ok() };
+            if is_sensitive {
+                return CallbackResult::Next;
+            }
+        }
+
         let Ok(mut clipboard) = Clipboard::new() else {
             return CallbackResult::Next;
         };
@@ -299,8 +313,14 @@ pub fn run() {
             });
 
             let app_handle = app.handle().clone();
+            let sensitive_format_id = unsafe {
+                RegisterClipboardFormatW(w!("ExcludeClipboardContentFromMonitorProcessing"))
+            };
             thread::spawn(move || {
-                let listener = ClipboardListener { app_handle };
+                let listener = ClipboardListener {
+                    app_handle,
+                    sensitive_format_id,
+                };
                 let mut master = clipboard_master::Master::new(listener).unwrap();
                 master.run().unwrap();
             });

@@ -24,6 +24,7 @@ chrono = "0.4.45"
 clipboard-master = "4.0.0"
 arboard = "3.6.1"
 image = "0.25.10"
+windows = { version = "0.59", features = ["Win32_System_DataExchange"] }
 
 [profile.release]
 codegen-units = 1
