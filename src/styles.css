@@ -148,9 +148,56 @@ header .header-btn svg {
     display: block;
 }
 
+/* ── Item Actions Bar ── */
+.item-actions {
+    display: flex;
+    align-self: flex-end;
+    gap: 2px;
+    margin: 2px 6px 4px auto;
+}
+
+/* ── Pin Button ── */
+.pin-btn {
+    background: #2c3034;
+    border: 1px solid #3d4349;
+    border-radius: 0;
+    color: #7f8c8d;
+    width: 28px;
+    height: 22px;
+    min-width: 28px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+}
+
+.pin-btn:hover {
+    background: #3daee9;
+    border-color: #3daee9;
+    color: #fff;
+}
+
+.pin-btn.active {
+    color: #3daee9;
+}
+
+.pin-btn.active:hover {
+    color: #fff;
+}
+
+.pin-btn svg {
+    width: 14px;
+    height: 14px;
+    fill: currentColor;
+}
+
+/* ── Pinned Row Indicator ── */
+.item-row.pinned {
+    border-left: 2px solid #3daee9;
+}
+
 /* ── Expand / Collapse Button ── */
 .expand-btn {
-    align-self: flex-end;
     background: #2c3034;
     border: 1px solid #3d4349;
     border-radius: 0;
@@ -163,9 +210,6 @@ header .header-btn svg {
     align-items: center;
     justify-content: center;
     cursor: pointer;
-    margin: 2px 6px 4px auto;
-    position: relative;
-    z-index: 1;
 }
 
 .expand-btn:hover {

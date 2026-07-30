@@ -134,10 +134,10 @@ impl ClipboardHandler for ClipboardListener {
 // ── Tauri Commands ──
 
 #[tauri::command]
-fn get_history(state: State<AppState>) -> Result<Vec<(i64, String, String)>, String> {
+fn get_history(state: State<AppState>) -> Result<Vec<(i64, String, String, bool)>, String> {
     let conn = state.conn.lock().map_err(|e| e.to_string())?;
     let mut stmt = conn
-        .prepare("SELECT id, content, item_type FROM clipboard ORDER BY id DESC LIMIT 100")
+        .prepare("SELECT id, content, item_type, pinned FROM clipboard ORDER BY pinned DESC, id DESC LIMIT 100")
         .map_err(|e| e.to_string())?;
     let rows = stmt
         .query_map([], |row| {
@@ -145,6 +145,7 @@ fn get_history(state: State<AppState>) -> Result<Vec<(i64, String, String)>, Str
                 row.get::<_, i64>(0)?,
                 row.get::<_, String>(1)?,
                 row.get::<_, String>(2)?,
+                row.get::<_, i64>(3)? != 0,
             ))
         })
         .map_err(|e| e.to_string())?;
@@ -187,25 +188,45 @@ fn delete_item(id: i64, state: State<AppState>) -> Result<(), String> {
 }
 
 #[tauri::command]
-fn clear_all(state: State<AppState>, app_handle: AppHandle) -> Result<(), String> {
+fn toggle_pin(id: i64, state: State<AppState>) -> Result<(), String> {
+    let conn = state.conn.lock().map_err(|e| e.to_string())?;
+    conn.execute(
+        "UPDATE clipboard SET pinned = CASE WHEN pinned = 1 THEN 0 ELSE 1 END WHERE id = ?1",
+        [id],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+fn clear_all(state: State<AppState>) -> Result<(), String> {
     // Reset duplicate detection
     if let Ok(mut last_seen) = state.last_seen.lock() {
         *last_seen = None;
     }
 
     let conn = state.conn.lock().map_err(|e| e.to_string())?;
-    conn.execute("DELETE FROM clipboard", [])
+
+    // Collect non-pinned image paths before deleting
+    let paths: Vec<String> = {
+        let mut stmt = conn
+            .prepare("SELECT content FROM clipboard WHERE item_type = 'image' AND pinned = 0")
+            .map_err(|e| e.to_string())?;
+        let result = stmt.query_map([], |row| row.get(0))
+            .map_err(|e| e.to_string())?
+            .filter_map(|r| r.ok())
+            .collect();
+        result
+    };
+
+    // Delete only non-pinned entries (pinned items survive clear)
+    conn.execute("DELETE FROM clipboard WHERE pinned = 0", [])
         .map_err(|e| e.to_string())?;
     drop(conn);
 
-    // Clean up all saved image files
-    if let Ok(app_data_dir) = app_handle.path().app_data_dir() {
-        let images_dir = app_data_dir.join("images");
-        if let Ok(entries) = std::fs::read_dir(&images_dir) {
-            for entry in entries.flatten() {
-                let _ = std::fs::remove_file(entry.path());
-            }
-        }
+    // Clean up image files for deleted entries
+    for path in paths {
+        let _ = std::fs::remove_file(&path);
     }
 
     Ok(())
@@ -255,9 +276,13 @@ pub fn run() {
                 (),
             )?;
 
-            // Add item_type column for existing databases (silently ignores if already present)
+            // Add columns for existing databases (silently ignores if already present)
             let _ = conn.execute(
                 "ALTER TABLE clipboard ADD COLUMN item_type TEXT DEFAULT 'text'",
+                (),
+            );
+            let _ = conn.execute(
+                "ALTER TABLE clipboard ADD COLUMN pinned INTEGER DEFAULT 0",
                 (),
             );
 
@@ -331,6 +356,7 @@ pub fn run() {
             get_history,
             copy_item,
             delete_item,
+            toggle_pin,
             clear_all
         ])
         .run(tauri::generate_context!())
