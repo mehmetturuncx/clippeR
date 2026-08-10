@@ -7,6 +7,16 @@ const ICON_EXPAND = `<svg viewBox="0 0 24 24"><path d="M7.41 8.59L12 13.17l4.59-
 const ICON_COLLAPSE = `<svg viewBox="0 0 24 24"><path d="M7.41 15.41L12 10.83l4.59 4.58L18 14l-6-6-6 6z"/></svg>`;
 const ICON_PIN = `<svg viewBox="0 0 24 24"><path d="M16 12V4h1V2H7v2h1v8l-2 2v2h5.2v6h1.6v-6H18v-2z"/></svg>`;
 
+// Modifier bitmask: Alt=1, Ctrl=2, Shift=4
+function shortcutLabel(modBitmask, keyIndex) {
+  const parts = [];
+  if (modBitmask & 2) parts.push("Ctrl");
+  if (modBitmask & 1) parts.push("Alt");
+  if (modBitmask & 4) parts.push("Shift");
+  parts.push(String.fromCharCode(65 + keyIndex));
+  return parts.join(" + ");
+}
+
 let lastHistoryJSON = "";
 
 async function refreshHistory() {
@@ -130,17 +140,8 @@ document.addEventListener("DOMContentLoaded", async () => {
   const settingsClose = document.getElementById("settings-close");
   const historyLimitSlider = document.getElementById("history-limit");
   const limitValueDisplay = document.getElementById("limit-value");
-  const shortcutModSelect = document.getElementById("shortcut-mod");
-  const shortcutKeySelect = document.getElementById("shortcut-key");
+  const shortcutInput = document.getElementById("shortcut-input");
   const autostartToggle = document.getElementById("autostart-toggle");
-
-  // Populate key dropdown (A–Z)
-  for (let i = 0; i < 26; i++) {
-    const opt = document.createElement("option");
-    opt.value = i;
-    opt.textContent = String.fromCharCode(65 + i);
-    shortcutKeySelect.appendChild(opt);
-  }
 
   // Load saved settings
   const settings = await invoke("get_settings");
@@ -149,8 +150,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   const savedKey = settings.shortcut_key ?? 21;
   historyLimitSlider.value = savedLimit;
   limitValueDisplay.textContent = savedLimit;
-  shortcutModSelect.value = savedMod;
-  shortcutKeySelect.value = savedKey;
+  shortcutInput.textContent = shortcutLabel(savedMod, savedKey);
 
   // Load autostart state
   try {
@@ -168,6 +168,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     settingsPanel.classList.add("hidden");
     historyList.classList.remove("hidden");
     settingsBtn.classList.remove("active");
+    shortcutInput.classList.remove("listening");
   }
 
   settingsBtn.addEventListener("click", (e) => {
@@ -193,19 +194,56 @@ document.addEventListener("DOMContentLoaded", async () => {
     await refreshHistory();
   });
 
-  // Shortcut change
-  async function applyShortcut() {
-    const modifier = parseInt(shortcutModSelect.value);
-    const key = parseInt(shortcutKeySelect.value);
-    try {
-      await invoke("set_shortcut", { modifier, key });
-    } catch (err) {
-      console.error("Failed to set shortcut:", err);
-    }
-  }
+  // ── Shortcut Recorder ──
+  shortcutInput.addEventListener("focus", () => {
+    shortcutInput.classList.add("listening");
+    shortcutInput.textContent = "Press a shortcut...";
+  });
 
-  shortcutModSelect.addEventListener("change", applyShortcut);
-  shortcutKeySelect.addEventListener("change", applyShortcut);
+  shortcutInput.addEventListener("blur", () => {
+    if (shortcutInput.classList.contains("listening")) {
+      // Cancelled — restore saved value
+      shortcutInput.classList.remove("listening");
+      shortcutInput.textContent = shortcutLabel(
+        settings.shortcut_mod ?? savedMod,
+        settings.shortcut_key ?? savedKey
+      );
+    }
+  });
+
+  shortcutInput.addEventListener("keydown", async (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    if (!shortcutInput.classList.contains("listening")) return;
+
+    // Build modifier bitmask
+    let modBitmask = 0;
+    if (e.altKey) modBitmask |= 1;
+    if (e.ctrlKey) modBitmask |= 2;
+    if (e.shiftKey) modBitmask |= 4;
+
+    // Only accept letter keys (A–Z) with at least one modifier
+    const key = e.key.toUpperCase();
+    if (key.length !== 1 || key < "A" || key > "Z" || modBitmask === 0) return;
+
+    const keyIndex = key.charCodeAt(0) - 65;
+
+    try {
+      await invoke("set_shortcut", { modifier: modBitmask, key: keyIndex });
+      // Update stored values for blur fallback
+      settings.shortcut_mod = modBitmask;
+      settings.shortcut_key = keyIndex;
+      shortcutInput.textContent = shortcutLabel(modBitmask, keyIndex);
+      shortcutInput.classList.remove("listening");
+      shortcutInput.blur();
+    } catch (err) {
+      shortcutInput.textContent = "Failed — try again";
+      setTimeout(() => {
+        shortcutInput.textContent = "Press a shortcut...";
+      }, 1500);
+    }
+  });
 
   // Autostart toggle
   autostartToggle.addEventListener("change", async () => {
