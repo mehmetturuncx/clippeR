@@ -14,6 +14,12 @@ use windows::Win32::System::DataExchange::{
     IsClipboardFormatAvailable, RegisterClipboardFormatW,
 };
 
+#[cfg(windows)]
+use std::os::windows::process::CommandExt;
+
+#[cfg(windows)]
+const CREATE_NO_WINDOW: u32 = 0x08000000;
+
 fn position_window_bottom_right(window: &tauri::WebviewWindow) {
     if let Ok(Some(monitor)) = window.primary_monitor() {
         let screen = monitor.size();
@@ -30,6 +36,60 @@ fn position_window_bottom_right(window: &tauri::WebviewWindow) {
         ));
     }
 }
+
+// ── Helpers ──
+
+fn modifier_from_bitmask(bitmask: i64) -> Option<Modifiers> {
+    let mut mods = Modifiers::empty();
+    if bitmask & 1 != 0 {
+        mods |= Modifiers::ALT;
+    }
+    if bitmask & 2 != 0 {
+        mods |= Modifiers::CONTROL;
+    }
+    if bitmask & 4 != 0 {
+        mods |= Modifiers::SHIFT;
+    }
+    if mods.is_empty() {
+        None
+    } else {
+        Some(mods)
+    }
+}
+
+fn key_from_index(index: i64) -> Code {
+    match index {
+        0 => Code::KeyA,
+        1 => Code::KeyB,
+        2 => Code::KeyC,
+        3 => Code::KeyD,
+        4 => Code::KeyE,
+        5 => Code::KeyF,
+        6 => Code::KeyG,
+        7 => Code::KeyH,
+        8 => Code::KeyI,
+        9 => Code::KeyJ,
+        10 => Code::KeyK,
+        11 => Code::KeyL,
+        12 => Code::KeyM,
+        13 => Code::KeyN,
+        14 => Code::KeyO,
+        15 => Code::KeyP,
+        16 => Code::KeyQ,
+        17 => Code::KeyR,
+        18 => Code::KeyS,
+        19 => Code::KeyT,
+        20 => Code::KeyU,
+        21 => Code::KeyV,
+        22 => Code::KeyW,
+        23 => Code::KeyX,
+        24 => Code::KeyY,
+        25 => Code::KeyZ,
+        _ => Code::KeyV,
+    }
+}
+
+// ── State ──
 
 struct AppState {
     last_seen: Mutex<Option<String>>,
@@ -221,7 +281,8 @@ fn clear_all(state: State<AppState>) -> Result<(), String> {
         let mut stmt = conn
             .prepare("SELECT content FROM clipboard WHERE item_type = 'image' AND pinned = 0")
             .map_err(|e| e.to_string())?;
-        let result = stmt.query_map([], |row| row.get(0))
+        let result = stmt
+            .query_map([], |row| row.get(0))
             .map_err(|e| e.to_string())?
             .filter_map(|r| r.ok())
             .collect();
@@ -272,6 +333,94 @@ fn set_setting(key: String, value: i64, state: State<AppState>) -> Result<(), St
     Ok(())
 }
 
+#[tauri::command]
+fn set_shortcut(
+    modifier: i64,
+    key: i64,
+    state: State<AppState>,
+    app_handle: AppHandle,
+) -> Result<(), String> {
+    let mods = modifier_from_bitmask(modifier);
+    let code = key_from_index(key);
+    let shortcut = Shortcut::new(mods, code);
+
+    // Unregister all existing shortcuts, then register the new one
+    app_handle
+        .global_shortcut()
+        .unregister_all()
+        .map_err(|e| e.to_string())?;
+    app_handle
+        .global_shortcut()
+        .register(shortcut)
+        .map_err(|e| e.to_string())?;
+
+    // Persist to DB
+    let conn = state.conn.lock().map_err(|e| e.to_string())?;
+    conn.execute(
+        "INSERT INTO settings (key, value) VALUES ('shortcut_mod', ?1) ON CONFLICT(key) DO UPDATE SET value = ?1",
+        [modifier],
+    )
+    .map_err(|e| e.to_string())?;
+    conn.execute(
+        "INSERT INTO settings (key, value) VALUES ('shortcut_key', ?1) ON CONFLICT(key) DO UPDATE SET value = ?1",
+        [key],
+    )
+    .map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
+#[tauri::command]
+fn get_autostart() -> Result<bool, String> {
+    let output = std::process::Command::new("reg")
+        .args([
+            "query",
+            r"HKCU\Software\Microsoft\Windows\CurrentVersion\Run",
+            "/v",
+            "clippeR",
+        ])
+        .creation_flags(CREATE_NO_WINDOW)
+        .output()
+        .map_err(|e| e.to_string())?;
+    Ok(output.status.success())
+}
+
+#[tauri::command]
+fn set_autostart(enabled: bool) -> Result<(), String> {
+    if enabled {
+        let exe = std::env::current_exe().map_err(|e| e.to_string())?;
+        let exe_str = exe.to_string_lossy().to_string();
+        std::process::Command::new("reg")
+            .args([
+                "add",
+                r"HKCU\Software\Microsoft\Windows\CurrentVersion\Run",
+                "/v",
+                "clippeR",
+                "/t",
+                "REG_SZ",
+                "/d",
+                &exe_str,
+                "/f",
+            ])
+            .creation_flags(CREATE_NO_WINDOW)
+            .output()
+            .map_err(|e| e.to_string())?;
+    } else {
+        std::process::Command::new("reg")
+            .args([
+                "delete",
+                r"HKCU\Software\Microsoft\Windows\CurrentVersion\Run",
+                "/v",
+                "clippeR",
+                "/f",
+            ])
+            .creation_flags(CREATE_NO_WINDOW)
+            .output()
+            .map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
 // ── App Entry Point ──
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -298,9 +447,6 @@ pub fn run() {
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
-            let shortcut = Shortcut::new(Some(Modifiers::ALT), Code::KeyV);
-            app.global_shortcut().register(shortcut)?;
-
             let app_data_dir = app.path().app_data_dir()?;
             std::fs::create_dir_all(&app_data_dir)?;
             std::fs::create_dir_all(app_data_dir.join("images"))?;
@@ -340,6 +486,35 @@ pub fn run() {
                 "INSERT OR IGNORE INTO settings (key, value) VALUES ('history_limit', 100)",
                 (),
             );
+            let _ = conn.execute(
+                "INSERT OR IGNORE INTO settings (key, value) VALUES ('shortcut_mod', 1)",
+                (),
+            );
+            let _ = conn.execute(
+                "INSERT OR IGNORE INTO settings (key, value) VALUES ('shortcut_key', 21)",
+                (),
+            );
+
+            // Read saved shortcut and register it
+            let shortcut_mod: i64 = conn
+                .query_row(
+                    "SELECT value FROM settings WHERE key = 'shortcut_mod'",
+                    [],
+                    |row| row.get(0),
+                )
+                .unwrap_or(1);
+            let shortcut_key: i64 = conn
+                .query_row(
+                    "SELECT value FROM settings WHERE key = 'shortcut_key'",
+                    [],
+                    |row| row.get(0),
+                )
+                .unwrap_or(21);
+
+            let mods = modifier_from_bitmask(shortcut_mod);
+            let code = key_from_index(shortcut_key);
+            let shortcut = Shortcut::new(mods, code);
+            app.global_shortcut().register(shortcut)?;
 
             app.manage(AppState {
                 last_seen: Mutex::new(None),
@@ -414,7 +589,10 @@ pub fn run() {
             toggle_pin,
             clear_all,
             get_settings,
-            set_setting
+            set_setting,
+            set_shortcut,
+            get_autostart,
+            set_autostart
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -122,36 +122,66 @@ listen("clipboard-changed", () => {
 });
 
 document.addEventListener("DOMContentLoaded", async () => {
+  const historyList = document.getElementById("history-list");
+
   // ── Settings Panel ──
   const settingsBtn = document.getElementById("settings-btn");
   const settingsPanel = document.getElementById("settings-panel");
   const settingsClose = document.getElementById("settings-close");
   const historyLimitSlider = document.getElementById("history-limit");
   const limitValueDisplay = document.getElementById("limit-value");
+  const shortcutModSelect = document.getElementById("shortcut-mod");
+  const shortcutKeySelect = document.getElementById("shortcut-key");
+  const autostartToggle = document.getElementById("autostart-toggle");
+
+  // Populate key dropdown (A–Z)
+  for (let i = 0; i < 26; i++) {
+    const opt = document.createElement("option");
+    opt.value = i;
+    opt.textContent = String.fromCharCode(65 + i);
+    shortcutKeySelect.appendChild(opt);
+  }
 
   // Load saved settings
   const settings = await invoke("get_settings");
   const savedLimit = settings.history_limit || 100;
+  const savedMod = settings.shortcut_mod ?? 1;
+  const savedKey = settings.shortcut_key ?? 21;
   historyLimitSlider.value = savedLimit;
   limitValueDisplay.textContent = savedLimit;
+  shortcutModSelect.value = savedMod;
+  shortcutKeySelect.value = savedKey;
+
+  // Load autostart state
+  try {
+    const isAutostart = await invoke("get_autostart");
+    autostartToggle.checked = isAutostart;
+  } catch { autostartToggle.checked = false; }
+
+  // Settings toggle (full overlay)
+  function openSettings() {
+    settingsPanel.classList.remove("hidden");
+    historyList.classList.add("hidden");
+    settingsBtn.classList.add("active");
+  }
+  function closeSettings() {
+    settingsPanel.classList.add("hidden");
+    historyList.classList.remove("hidden");
+    settingsBtn.classList.remove("active");
+  }
 
   settingsBtn.addEventListener("click", (e) => {
     e.stopPropagation();
-    const isOpen = !settingsPanel.classList.contains("hidden");
-    if (isOpen) {
-      settingsPanel.classList.add("hidden");
-      settingsBtn.classList.remove("active");
+    if (!settingsPanel.classList.contains("hidden")) {
+      closeSettings();
     } else {
-      settingsPanel.classList.remove("hidden");
-      settingsBtn.classList.add("active");
+      openSettings();
     }
   });
 
-  settingsClose.addEventListener("click", () => {
-    settingsPanel.classList.add("hidden");
-    settingsBtn.classList.remove("active");
-  });
+  settingsClose.addEventListener("click", closeSettings);
 
+  // History limit
   historyLimitSlider.addEventListener("input", () => {
     limitValueDisplay.textContent = historyLimitSlider.value;
   });
@@ -161,6 +191,30 @@ document.addEventListener("DOMContentLoaded", async () => {
     await invoke("set_setting", { key: "history_limit", value });
     lastHistoryJSON = "";
     await refreshHistory();
+  });
+
+  // Shortcut change
+  async function applyShortcut() {
+    const modifier = parseInt(shortcutModSelect.value);
+    const key = parseInt(shortcutKeySelect.value);
+    try {
+      await invoke("set_shortcut", { modifier, key });
+    } catch (err) {
+      console.error("Failed to set shortcut:", err);
+    }
+  }
+
+  shortcutModSelect.addEventListener("change", applyShortcut);
+  shortcutKeySelect.addEventListener("change", applyShortcut);
+
+  // Autostart toggle
+  autostartToggle.addEventListener("change", async () => {
+    try {
+      await invoke("set_autostart", { enabled: autostartToggle.checked });
+    } catch (err) {
+      console.error("Failed to set autostart:", err);
+      autostartToggle.checked = !autostartToggle.checked;
+    }
   });
 
   // ── Clear All ──
