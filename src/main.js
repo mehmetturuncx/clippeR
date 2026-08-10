@@ -60,11 +60,10 @@ async function refreshHistory() {
 
     wrapper.appendChild(button);
 
-    // Action bar (pin + expand)
+    // Action bar (expand + pin)
     const actionsBar = document.createElement("div");
     actionsBar.className = "item-actions";
 
-    // Pin button
     // Expand/collapse for long text entries
     if (item_type === "text" && (content.length > 120 || (content.match(/\n/g) || []).length >= 2)) {
       const expandBtn = document.createElement("button");
@@ -122,7 +121,49 @@ listen("clipboard-changed", () => {
   refreshHistory();
 });
 
-document.addEventListener("DOMContentLoaded", () => {
+document.addEventListener("DOMContentLoaded", async () => {
+  // ── Settings Panel ──
+  const settingsBtn = document.getElementById("settings-btn");
+  const settingsPanel = document.getElementById("settings-panel");
+  const settingsClose = document.getElementById("settings-close");
+  const historyLimitSlider = document.getElementById("history-limit");
+  const limitValueDisplay = document.getElementById("limit-value");
+
+  // Load saved settings
+  const settings = await invoke("get_settings");
+  const savedLimit = settings.history_limit || 100;
+  historyLimitSlider.value = savedLimit;
+  limitValueDisplay.textContent = savedLimit;
+
+  settingsBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const isOpen = !settingsPanel.classList.contains("hidden");
+    if (isOpen) {
+      settingsPanel.classList.add("hidden");
+      settingsBtn.classList.remove("active");
+    } else {
+      settingsPanel.classList.remove("hidden");
+      settingsBtn.classList.add("active");
+    }
+  });
+
+  settingsClose.addEventListener("click", () => {
+    settingsPanel.classList.add("hidden");
+    settingsBtn.classList.remove("active");
+  });
+
+  historyLimitSlider.addEventListener("input", () => {
+    limitValueDisplay.textContent = historyLimitSlider.value;
+  });
+
+  historyLimitSlider.addEventListener("change", async () => {
+    const value = parseInt(historyLimitSlider.value);
+    await invoke("set_setting", { key: "history_limit", value });
+    lastHistoryJSON = "";
+    await refreshHistory();
+  });
+
+  // ── Clear All ──
   const clearBtn = document.getElementById("clear-all-btn");
   const confirmPopup = document.getElementById("clear-confirm-popup");
   const confirmYes = document.getElementById("confirm-yes");

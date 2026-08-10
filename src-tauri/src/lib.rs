@@ -136,11 +136,20 @@ impl ClipboardHandler for ClipboardListener {
 #[tauri::command]
 fn get_history(state: State<AppState>) -> Result<Vec<(i64, String, String, bool)>, String> {
     let conn = state.conn.lock().map_err(|e| e.to_string())?;
+
+    let limit: i64 = conn
+        .query_row(
+            "SELECT value FROM settings WHERE key = 'history_limit'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap_or(100);
+
     let mut stmt = conn
-        .prepare("SELECT id, content, item_type, pinned FROM clipboard ORDER BY pinned DESC, id DESC LIMIT 100")
+        .prepare("SELECT id, content, item_type, pinned FROM clipboard ORDER BY pinned DESC, id DESC LIMIT ?1")
         .map_err(|e| e.to_string())?;
     let rows = stmt
-        .query_map([], |row| {
+        .query_map([limit], |row| {
             Ok((
                 row.get::<_, i64>(0)?,
                 row.get::<_, String>(1)?,
@@ -232,6 +241,37 @@ fn clear_all(state: State<AppState>) -> Result<(), String> {
     Ok(())
 }
 
+#[tauri::command]
+fn get_settings(state: State<AppState>) -> Result<std::collections::HashMap<String, i64>, String> {
+    let conn = state.conn.lock().map_err(|e| e.to_string())?;
+    let mut stmt = conn
+        .prepare("SELECT key, value FROM settings")
+        .map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map([], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+        })
+        .map_err(|e| e.to_string())?;
+
+    let mut settings = std::collections::HashMap::new();
+    for row in rows {
+        let (key, value) = row.map_err(|e| e.to_string())?;
+        settings.insert(key, value);
+    }
+    Ok(settings)
+}
+
+#[tauri::command]
+fn set_setting(key: String, value: i64, state: State<AppState>) -> Result<(), String> {
+    let conn = state.conn.lock().map_err(|e| e.to_string())?;
+    conn.execute(
+        "INSERT INTO settings (key, value) VALUES (?1, ?2) ON CONFLICT(key) DO UPDATE SET value = ?2",
+        rusqlite::params![key, value],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 // ── App Entry Point ──
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -283,6 +323,21 @@ pub fn run() {
             );
             let _ = conn.execute(
                 "ALTER TABLE clipboard ADD COLUMN pinned INTEGER DEFAULT 0",
+                (),
+            );
+
+            // Settings table
+            conn.execute(
+                "CREATE TABLE IF NOT EXISTS settings (
+                    key TEXT PRIMARY KEY,
+                    value INTEGER NOT NULL
+                )",
+                (),
+            )?;
+
+            // Default settings
+            let _ = conn.execute(
+                "INSERT OR IGNORE INTO settings (key, value) VALUES ('history_limit', 100)",
                 (),
             );
 
@@ -357,7 +412,9 @@ pub fn run() {
             copy_item,
             delete_item,
             toggle_pin,
-            clear_all
+            clear_all,
+            get_settings,
+            set_setting
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

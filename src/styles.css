@@ -350,6 +350,118 @@ header .header-btn svg {
     background: #3d4349;
 }
 
+/* ── Settings Panel ── */
+#settings-panel {
+    background: #232629;
+    border-bottom: 1px solid #3d4349;
+    overflow: hidden;
+    animation: settingsSlide 0.15s ease-out;
+}
+
+@keyframes settingsSlide {
+    from { max-height: 0; opacity: 0; }
+    to { max-height: 200px; opacity: 1; }
+}
+
+.settings-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 12px 4px;
+    font-size: 12px;
+    font-weight: 600;
+    color: #bdc3c7;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+}
+
+.settings-close-btn {
+    background: transparent;
+    border: none;
+    color: #7f8c8d;
+    width: 22px;
+    height: 22px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+}
+
+.settings-close-btn:hover {
+    color: #eff0f1;
+}
+
+.settings-close-btn svg {
+    width: 14px;
+    height: 14px;
+    fill: currentColor;
+}
+
+.settings-body {
+    padding: 6px 12px 10px;
+}
+
+.setting-item {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.setting-label {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 12px;
+    color: #eff0f1;
+}
+
+.setting-value {
+    font-size: 12px;
+    font-weight: 600;
+    color: #3daee9;
+    min-width: 28px;
+    text-align: right;
+}
+
+/* Range slider */
+#history-limit {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    height: 4px;
+    background: #3d4349;
+    outline: none;
+    border-radius: 2px;
+}
+
+#history-limit::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: #3daee9;
+    cursor: pointer;
+    border: none;
+    transition: transform 0.1s;
+}
+
+#history-limit::-webkit-slider-thumb:hover {
+    transform: scale(1.2);
+}
+
+.setting-range-labels {
+    display: flex;
+    justify-content: space-between;
+    font-size: 10px;
+    color: #7f8c8d;
+}
+
+/* Active settings button indicator */
+#settings-btn.active {
+    color: #3daee9;
+}
+
 .hidden {
     display: none !important;
 }
