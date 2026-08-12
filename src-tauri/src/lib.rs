@@ -389,7 +389,8 @@ fn get_autostart() -> Result<bool, String> {
 fn set_autostart(enabled: bool) -> Result<(), String> {
     if enabled {
         let exe = std::env::current_exe().map_err(|e| e.to_string())?;
-        let exe_str = exe.to_string_lossy().to_string();
+        // Wrap path in quotes for paths with spaces, add --minimized flag
+        let reg_value = format!("\"{}\" --minimized", exe.to_string_lossy());
         std::process::Command::new("reg")
             .args([
                 "add",
@@ -399,7 +400,7 @@ fn set_autostart(enabled: bool) -> Result<(), String> {
                 "/t",
                 "REG_SZ",
                 "/d",
-                &exe_str,
+                &reg_value,
                 "/f",
             ])
             .creation_flags(CREATE_NO_WINDOW)
