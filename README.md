@@ -15,6 +15,10 @@
   <img src="https://img.shields.io/badge/license-MIT-green?style=flat-square" alt="License">
 </p>
 
+<p align="center">
+  <img src="assets/clippeR_ss.png" alt="clippeR Screenshot" style="border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); max-width: 100%;">
+</p>
+
 ---
 
 ## ✨ Features
